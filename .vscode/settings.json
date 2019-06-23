@@ -1,0 +1,5 @@
+{
+  "python.linting.pylintEnabled": true,
+  "python.linting.enabled": true,
+  "python.pythonPath": "/root/.local/share/virtualenvs/app-d_acidP1/bin/python"
+}
