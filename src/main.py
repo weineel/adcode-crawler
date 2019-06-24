@@ -8,11 +8,33 @@ from urllib.parse import urljoin
 from pyquery import PyQuery as pq
 import json
 
-sleepTime = 2  # 防止太快的访问网站。
-
-entryUrl = 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2018/index.html'
-
 parser = argparse.ArgumentParser()
+
+parser.add_argument('-i', '--intervals', type=int, help='网页下载间隔时间, 默认是3。')
+recursion_parser = parser.add_mutually_exclusive_group(required=False)
+recursion_parser.add_argument('-r', '--recursion', dest='recursion', help='获取子级', action='store_true')
+recursion_parser.add_argument('--no-recursion', dest='recursion', help='不获取子级， 默认', action='store_false')
+parser.add_argument('-o', '--output', help='指定爬取的数据保存到的文件')
+parser.add_argument('-f', '--format', help='指定数据保存的格式，目前只支持 json')
+
+parser.set_defaults(recursion=False)
+
+args = parser.parse_args()
+
+intervals = args.intervals if args.intervals else 3  # 防止太快的访问网站。
+recursion = args.recursion  # 是否获取子级
+fileFormat = args.format if args.format else 'json'
+if fileFormat != 'json':
+  raise Exception('不支持的文件格式[{}]'.format(fileFormat))
+output = args.output if args.output else './output.{}'.format(fileFormat)
+
+# print(intervals)
+# print(recursion)
+# print(fileFormat)
+# print(output)
+
+# 首页地址
+entryUrl = 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2018/index.html'
 
 global classNameTable
 classNameTable = {
@@ -74,21 +96,17 @@ def recursionFetch(parentDataList):
     if child['childrenUrl'] != None:
       dataList = getDataListByUrl(child['childrenUrl'], getClassNameFromUrl(child['childrenUrl']))
       child['children'] = dataList
-      time.sleep(sleepTime)
+      time.sleep(intervals)
       recursionFetch(child['children'])
 
 # 获取省级数据
-r = requests.get(entryUrl)
-r.encoding = 'gb2312'
-q = pq(r.text)
-provinces = [{ 'code': a.attr('href')[0:2], 'name': a.text(), 'childrenUrl': urljoin(entryUrl, a.attr('href')) } for a in q('.provincetr td a').items('a')]
+if recursion:
+  r = requests.get(entryUrl)
+  r.encoding = 'gb2312'
+  q = pq(r.text)
+  provinces = [{ 'code': a.attr('href')[0:2], 'name': a.text(), 'childrenUrl': urljoin(entryUrl, a.attr('href')) } for a in q('.provincetr td a').items('a')]
 
-recursionFetch(provinces)
+  recursionFetch(provinces)
 
-with open('./result.json', mode='w+') as f:
-  f.write(json.dumps(provinces))
-
-def buildUrlWithCode(code):
-  pass
-
-parser.parse_args()
+  with open(output, mode='w+') as f:
+    f.write(json.dumps(provinces))

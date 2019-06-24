@@ -1,9 +1,5 @@
-FROM python:3
+FROM kennethreitz/pipenv
 
-WORKDIR /usr/app
+ENTRYPOINT ["python3", "src/main.py"]
 
-COPY . /usr/app
-
-RUN pip install pipenv && pipenv install
-
-CMD ['python', './src/first.py', '-h']
+CMD -r -i 2
