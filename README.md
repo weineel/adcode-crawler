@@ -8,5 +8,5 @@
 
 ```shell
 docker build -t patsnap/adcode-crawler:0.0.1 .
-docker run -v $(pwd):/app -t patsnap/adcode-crawler:0.0.1
+docker run --rm -v $(pwd):/app -t patsnap/adcode-crawler:0.0.1
 ```

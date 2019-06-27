@@ -4,18 +4,21 @@ import argparse
 import requests
 import time
 import re
+import json
+import random
 from urllib.parse import urljoin
 from pyquery import PyQuery as pq
-import json
+from user_gent_list import USER_AGENT_LIST
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-i', '--intervals', type=int, help='网页下载间隔时间, 默认是3。')
 recursion_parser = parser.add_mutually_exclusive_group(required=False)
-recursion_parser.add_argument('-r', '--recursion', dest='recursion', help='获取子级', action='store_true')
-recursion_parser.add_argument('--no-recursion', dest='recursion', help='不获取子级， 默认', action='store_false')
-parser.add_argument('-o', '--output', help='指定爬取的数据保存到的文件')
-parser.add_argument('-f', '--format', help='指定数据保存的格式，目前只支持 json')
+recursion_parser.add_argument('-r', '--recursion', dest='recursion', help='递归获取子级。', action='store_true')
+recursion_parser.add_argument('--no-recursion', dest='recursion', help='不递归获取子级，只获取直属子级，默认。', action='store_false')
+parser.add_argument('-o', '--output', help='指定爬取的数据保存到的文件。')
+parser.add_argument('-f', '--format', help='指定数据保存的格式，目前只支持 json。')
+parser.add_argument('--adcode', help='指定要获取的城市的 adcode，将获取其下一级的 adcode 数据列表。')
 
 parser.set_defaults(recursion=False)
 
@@ -32,9 +35,10 @@ output = args.output if args.output else './output.{}'.format(fileFormat)
 # print(recursion)
 # print(fileFormat)
 # print(output)
+# print(args.adcode)
 
 # 首页地址
-entryUrl = 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2018/index.html'
+indexUrl = 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2018/index.html'
 
 global classNameTable
 classNameTable = {
@@ -54,14 +58,51 @@ def getClassNameFromUrl(url):
   else:
     return ''
 
+def formatAdcode(adcode):
+  '''
+    格式化 adcode 长度固定为 12 位，不足的在后面补 0，超过的去掉后面的位
+  '''
+  if len(adcode) > 12:
+    return adcode[0:12]
+  else:
+    zeros = ''
+    for _ in range(12 - len(adcode)):
+      zeros += '0'
+    return adcode + zeros
+
+def buildUrlFromAdcode(adcode):
+  '''
+    根据给定的 format 后的 adcode 构建其子级页面url
+  '''
+  url = 'http://www.stats.gov.cn/tjsj/tjbz/tjyqhdmhcxhfdm/2018/'
+  province = adcode[0:2]  # 省 code
+  city = adcode[2:4]  # 市
+  county = adcode[4:6]  # 县区
+  village = adcode[6:9] # 乡镇级
+  finallyCode = ''
+  if province != '00':
+    finallyCode += province
+  if city != '00':
+    url += '{}/'.format(province)
+    finallyCode += city
+  if county != '00':
+    url += '{}/'.format(city)
+    finallyCode += county
+  if village != '000':
+    url += '{}/'.format(county)
+    finallyCode += village
+  url += '{}.html'.format(finallyCode)
+  return url
 
 def getDataListByUrl(url, key):
   '''
     省级以下，下载并解析页面数据。
   '''
   print(url)
-  nextR = requests.get(url)
+  headers = { 'user-agent': random.choice(USER_AGENT_LIST) }
+  nextR = requests.get(url, headers = headers)
   if (nextR.status_code != 200):
+    print(nextR.text)
     return []
   nextR.encoding = 'gb2312'
   q = pq(nextR.text)
@@ -99,14 +140,22 @@ def recursionFetch(parentDataList):
       time.sleep(intervals)
       recursionFetch(child['children'])
 
-# 获取省级数据
-if recursion:
-  r = requests.get(entryUrl)
+dataList = []
+if args.adcode:
+  enterUrl = buildUrlFromAdcode(formatAdcode(args.adcode))
+  dataList = getDataListByUrl(enterUrl, getClassNameFromUrl(enterUrl))
+else:
+  # 获取省级数据
+  r = requests.get(indexUrl)
   r.encoding = 'gb2312'
   q = pq(r.text)
-  provinces = [{ 'code': a.attr('href')[0:2], 'name': a.text(), 'childrenUrl': urljoin(entryUrl, a.attr('href')) } for a in q('.provincetr td a').items('a')]
+  # 省级
+  dataList = [{ 'code': a.attr('href')[0:2], 'name': a.text(), 'childrenUrl': urljoin(indexUrl, a.attr('href')) } for a in q('.provincetr td a').items('a')]
 
-  recursionFetch(provinces)
+# 是否递归获取子级
+if recursion:
+  recursionFetch(dataList)
 
-  with open(output, mode='w+') as f:
-    f.write(json.dumps(provinces))
+if fileFormat == 'json':
+  with open(output, mode='w+', encoding="utf8") as f:
+    f.write(json.dumps(dataList, ensure_ascii=False))
